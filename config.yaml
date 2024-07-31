@@ -1,0 +1,26 @@
+global:
+    model_params: {'input_dim': 16, 'output_dim': 794}
+    model_save_path: model
+    log_dir: log
+    use_gpu: True
+
+train:
+  path: D:\一汽项目_图神经网络\舱室声压级20240729_train.xlsx  # 训练的 excel
+#  path: "舱室声压级20240729_train.xlsx"  # 训练的 excel
+  val_size: 0.1
+  num_epochs: 1000
+  random_state: 0
+  batch_size: 32
+
+eval:
+  path: 舱室声压级20240729_eval.xlsx   # 评估的 excel
+  output_excel: 'eval.xlsx'
+
+pre:
+  path: 舱室声压级20240729_test.xlsx  # 带预测的 excel
+  output_excel: 'pre.xlsx'
+
+reverse:
+  path: 舱室声压级20240729_reverse.xlsx  # 反向的 excel
+  output_excel:
+

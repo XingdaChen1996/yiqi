@@ -10,23 +10,57 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 import dill as pickle
 from BPNet import BPNet
+import argparse
+from yaml_read import read_yaml
+import shutil
+
+
+def delete_folder(folder_path):
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+        print(f"The folder '{folder_path}' and its contents have been deleted.")
+    else:
+        print(f"The folder '{folder_path}' does not exist.")
+
+
+def create_folder(folder_path):
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+        print(f"The folder '{folder_path}' has been created.")
+    else:
+        print(f"The folder '{folder_path}' already exists.")
+
 
 if __name__ == '__main__':
-    path = "舱室声压级20240729_train.xlsx"
-    val_size = 0.1
-    num_epochs = 100
-    random_state = 0
-    batch_size = 32
-    log_dir = 'log'
-    scaler_save_dir = 'model'
-    model_save_path = 'model'
-    model_params = {'input_dim': 16, 'output_dim': 794}
+
+    # -f config.yaml
+    parser = argparse.ArgumentParser(description="training")
+    parser.add_argument('-f', '--file', type=str, metavar="", required=True,
+                        help='path of config.yaml file')
+
+    args = parser.parse_args()
+    config_file = read_yaml(args.file)
+
+    delete_folder(config_file['global']['model_save_path'])
+    delete_folder(config_file['global']['log_dir'])
+
+    create_folder(config_file['global']['model_save_path'])
+    create_folder(config_file['global']['log_dir'])
 
     # read and split data
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    X = pd.read_excel(path, sheet_name='input', header=0, index_col=0)
-    y = pd.read_excel(path, sheet_name='output', header=0, index_col=0)
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_size, random_state=random_state)
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    if config_file['global']['use_gpu']:
+        assert (torch.cuda.is_available()), 'GPU不可用'
+        device = torch.device(type="cuda")
+    else:
+        device = torch.device(type='cpu')
+
+    X = pd.read_excel(config_file['train']['path'], sheet_name='input', header=0, index_col=0)
+    y = pd.read_excel(config_file['train']['path'], sheet_name='output', header=0, index_col=0)
+    X_train, X_val, y_train, y_val = train_test_split(X, y,
+                                                      test_size=config_file['train']['val_size'],
+                                                      random_state=config_file['train']['random_state'])
 
     scaler_X = StandardScaler()
     scaler_y = StandardScaler()
@@ -47,11 +81,11 @@ if __name__ == '__main__':
     train_dataset = TensorDataset(X_train, y_train)
     val_dataset = TensorDataset(X_val, y_val)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=config_file['train']['batch_size'], shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=config_file['train']['batch_size'], shuffle=False)
 
     # 实例化模型
-    model = BPNet(**model_params).to(device)
+    model = BPNet(**config_file['global']['model_params']).to(device)
     # 定义损失函数和优化器
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -59,10 +93,10 @@ if __name__ == '__main__':
     # 打印模型结构
     print(model)
     # Initialize TensorBoard SummaryWriter
-    writer = SummaryWriter(log_dir=log_dir)
+    writer = SummaryWriter(log_dir=config_file['global']['log_dir'])
     best_val_loss = float('inf')
 
-    for epoch in range(num_epochs):
+    for epoch in range(config_file['train']['num_epochs']):
         model.train()
         train_loss = 0
         for X_batch, y_batch in train_loader:
@@ -91,18 +125,18 @@ if __name__ == '__main__':
         writer.add_scalar('Loss/Train', train_loss, epoch)
         writer.add_scalar('Loss/Validation', val_loss, epoch)
 
-        with open('log.txt', 'a') as f:
+        with open(os.path.join(config_file['global']['log_dir'], 'log.txt'), 'a') as f:
             f.write(f'Epoch {epoch + 1}, Training Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}\n')
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), os.path.join(model_save_path, 'best_model.pth'))
+            torch.save(model.state_dict(), os.path.join(config_file['global']['model_save_path'], 'best_model.pth'))
 
     writer.close()
 
-    with open(os.path.join(model_save_path, 'scaler_X.pkl'), "wb") as f:
+    with open(os.path.join(config_file['global']['model_save_path'], 'scaler_X.pkl'), "wb") as f:
         pickle.dump(scaler_X, f)
-    with open(os.path.join(model_save_path, 'scaler_y.pkl'), "wb") as f:
+    with open(os.path.join(config_file['global']['model_save_path'], 'scaler_y.pkl'), "wb") as f:
         pickle.dump(scaler_y, f)
 
     print('Training complete')
